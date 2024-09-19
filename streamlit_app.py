@@ -1,13 +1,15 @@
 import streamlit as st
 import pandas as pd
 
+
 # Function to save the updated DataFrame back to CSV
 def save_file(df, file_path):
     df.to_csv(file_path, index=False)
 
 # Main app
 def main():
-    global pivot_table, df, filtered_df, last_record_df, last_5_records_df, app_remove_df, non_app_remove_df, event_flow_df, last_5_valid_records_df, last_5_records_df1, last_5_records_df2, col1
+
+    global pivot_table, df, filtered_df, last_record_df, last_5_records_df, app_remove_df, non_app_remove_df, event_flow_df, last_5_valid_records_df, last_5_records_df1, last_5_records_df2, col1, final_df1
     #st.title("Analysis of Loogy Events Data 📉")
     st.markdown(
             """
@@ -610,183 +612,109 @@ def main():
             df['event_time_UTC'] = pd.to_datetime(df['event_time_UTC'], errors='coerce', utc=True)
             df['event_date'] = df['event_time_UTC'].dt.date
 
-        st.write("Original Data:")
-        st.dataframe(df)
+            st.write("Original Data:")
+            st.dataframe(df)
+
+            unique_ids = df['user_pseudo_id'].unique()
+            unique_events = df['event_name'].unique()
+            unique_dates = df['event_date'].unique()
+
+            # User Pseudo ID filter
+            selected_user_ids = st.sidebar.multiselect("Select User Pseudo ID", options=unique_ids)
+
+            # Event Name filter
+            selected_events = st.sidebar.multiselect("Select Event Name", options=unique_events)
+
+            # Event Date filter
+            selected_dates = st.sidebar.multiselect("Select Event Date", options=unique_dates)
+
+            # Apply filters to the DataFrame
+            if selected_user_ids:
+                df = df[df['user_pseudo_id'].isin(selected_user_ids)]
+
+            if selected_events:
+                df = df[df['event_name'].isin(selected_events)]
+
+            if selected_dates:
+                df = df[df['event_date'].isin(selected_dates)]
 
 
+            # Sort by 'user_pseudo_id' and 'event_time_UTC' to get the correct order
+            df_sorted = df.sort_values(by=['user_pseudo_id', 'event_time_UTC'])
 
-        unique_ids = df['user_pseudo_id'].unique()
-        unique_events = df['event_name'].unique()
-        unique_dates = df['event_date'].unique()
-
-        # User Pseudo ID filter
-        selected_user_ids = st.sidebar.multiselect("Select User Pseudo ID", options=unique_ids)
-
-        # Event Name filter
-        selected_events = st.sidebar.multiselect("Select Event Name", options=unique_events)
-
-        # Event Date filter
-        selected_dates = st.sidebar.multiselect("Select Event Date", options=unique_dates)
-
-        # Apply filters to the DataFrame
-        if selected_user_ids:
-            df = df[df['user_pseudo_id'].isin(selected_user_ids)]
-
-        if selected_events:
-            df = df[df['event_name'].isin(selected_events)]
-
-        if selected_dates:
-            df = df[df['event_date'].isin(selected_dates)]
-
-
-        # Sort by 'user_pseudo_id' and 'event_time_UTC' to get the correct order
-        df_sorted = df.sort_values(by=['user_pseudo_id', 'event_time_UTC'])
-
-        # Function to get the last valid record for each user
-        def get_valid_last_record(group):
-            # Reverse the group to check from last to first
-            group_reversed = group[::-1]
-
-            for index, row in group_reversed.iterrows():
-                if row['event_name'] not in excluded_events:
-                    return row
-
-            # If all records are in the excluded list, return the actual last one
-            return group_reversed.iloc[0]
-
-        # Apply the function to get the last valid record for each user
-        last_record_df = df_sorted.groupby('user_pseudo_id').apply(get_valid_last_record).reset_index(drop=True)
-
-        st.write("Last Valid Record for Each User:")
-        st.dataframe(last_record_df)
-
-        app_remove_users = last_record_df[last_record_df['event_name'] == 'app_remove']['user_pseudo_id'].unique()
-        app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(app_remove_users)]
-
-        # Function to get the last 5 valid records for each user
-        def get_last_5_valid_records(group):
-            valid_records = group[~group['event_name'].isin(excluded_events)]
-            return valid_records.tail(5)
-
-        last_5_records_df1 = app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
-
-        #st.write("Last 5 Valid Records for Users with 'app_remove' Event:")
-        #st.dataframe(last_5_records_df1)
-
-        non_app_remove_users = last_record_df[last_record_df['event_name'] != 'app_remove']['user_pseudo_id'].unique()
-        non_app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(non_app_remove_users)]
-
-        def get_last_5_valid_records(group):
-            valid_records = group[~group['event_name'].isin(excluded_events)]
-            return valid_records.tail(5)
-
-        last_5_records_df2 = non_app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
-
-        #st.write("Last 5 Valid Records for Users without 'app_remove' Event:")
-        #st.dataframe(last_5_records_df2)
-
-        app_remove_users = last_record_df[last_record_df['event_name'] == 'app_remove']['user_pseudo_id'].unique()
-        app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(app_remove_users)]
-
-        # Function to get the last 5 valid records for each user
-        def get_last_5_valid_records(group):
-            valid_records = group[~group['event_name'].isin(excluded_events + ['app_remove'])]
-            return valid_records.tail(5)
-
-        last_5_records_df1 = app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
-
-        #st.write("Last 5 Valid Records for Users with 'app_remove' Event (excluding 'app_remove'):")
-        #st.dataframe(last_5_records_df1)
-
-        # Create a pivot table for event_name by Total users
-        pivot_table = last_record_df.groupby('event_name').size().reset_index(name='Total users')
-
-        # Sort the pivot table in descending order
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-
-        # Add a percentage column
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-
-        col1, col2 = st.columns(2)
-    # with col1:
-        #st.write("Pivot Table of Overall event_name by Total users:")
-        #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
-
-        filtered_df = df[df['event_name'].isin(included_events)]
-
-        two_event_df = df_sorted[df_sorted['event_name'].isin(['first_open', 'step1_homescreen_launched'])]
-
-        # Get the last record between these two events for each user
-        last_between_events_df = two_event_df.groupby('user_pseudo_id').last().reset_index()
-
-        #st.write("Record Between first open and homescreen launched for Each User:")
-        #st.dataframe(last_between_events_df)
-
-        users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'first_open']['user_pseudo_id']
-
-        # Get the last record from the main data for these users
-        final_df = df[df['user_pseudo_id'].isin(users_with_first_open)]
-        def get_last_valid_record(group):
-            group_reversed = group[::-1]
-            for index, row in group_reversed.iterrows():
-                if row['event_name'] not in excluded_events:
-                    return row
-            return group_reversed.iloc[0]
-
-        final_df = final_df.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
-
-        # Display the final DataFrame
-        #st.write("Before homescreen launched user churn:")
-        #st.dataframe(final_df)
-
-        pivot_table = final_df.groupby('event_name').size().reset_index(name='Total users')
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col1:
-            st.write("Pivot Table of Before homescreen launched user churn:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
-
-            two_event_df = df_sorted[df_sorted['event_name'].isin(['step1_homescreen_launched', 'step2_content_edit_screen_open'])]
-
-            # Get the last record between these two events for each user
-            last_between_events_df = two_event_df.groupby('user_pseudo_id').last().reset_index()
-
-            #st.write("Record Between first open and homescreen launched for Each User:")
-            #st.dataframe(last_between_events_df)
-
-            users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'step1_homescreen_launched']['user_pseudo_id']
-
-            final_df = df[df['user_pseudo_id'].isin(users_with_first_open)]
-            def get_last_valid_record(group):
+            # Function to get the last valid record for each user
+            def get_valid_last_record(group):
+                # Reverse the group to check from last to first
                 group_reversed = group[::-1]
+
                 for index, row in group_reversed.iterrows():
                     if row['event_name'] not in excluded_events:
                         return row
+
+                # If all records are in the excluded list, return the actual last one
                 return group_reversed.iloc[0]
 
-            final_df = final_df.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
+            # Apply the function to get the last valid record for each user
+            last_record_df = df_sorted.groupby('user_pseudo_id').apply(get_valid_last_record).reset_index(drop=True)
 
-            # Display the final DataFrame
-            #st.write("Before content_edit_screen_open user churn:")
-            #st.dataframe(final_df)
+            st.write("Last Valid Record for Each User:")
+            st.dataframe(last_record_df)
 
-            pivot_table = final_df.groupby('event_name').size().reset_index(name='Total users')
-            pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-            pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col2:
-            st.write("Pivot Table of Before content_edit_screen_open user churn:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+            app_remove_users = last_record_df[last_record_df['event_name'] == 'app_remove']['user_pseudo_id'].unique()
+            app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(app_remove_users)]
 
+            # Function to get the last 5 valid records for each user
+            def get_last_5_valid_records(group):
+                valid_records = group[~group['event_name'].isin(excluded_events)]
+                return valid_records.tail(5)
 
+            last_5_records_df1 = app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
+
+            #st.write("Last 5 Valid Records for Users with 'app_remove' Event:")
+            #st.dataframe(last_5_records_df1)
+
+            non_app_remove_users = last_record_df[last_record_df['event_name'] != 'app_remove']['user_pseudo_id'].unique()
+            non_app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(non_app_remove_users)]
+
+            def get_last_5_valid_records(group):
+                valid_records = group[~group['event_name'].isin(excluded_events)]
+                return valid_records.tail(5)
+
+            last_5_records_df2 = non_app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
+
+            #st.write("Last 5 Valid Records for Users without 'app_remove' Event:")
+            #st.dataframe(last_5_records_df2)
+
+            app_remove_users = last_record_df[last_record_df['event_name'] == 'app_remove']['user_pseudo_id'].unique()
+            app_remove_df = df_sorted[df_sorted['user_pseudo_id'].isin(app_remove_users)]
+
+            # Function to get the last 5 valid records for each user
+            def get_last_5_valid_records(group):
+                valid_records = group[~group['event_name'].isin(excluded_events + ['app_remove'])]
+                return valid_records.tail(5)
+
+            last_5_records_df1 = app_remove_df.groupby('user_pseudo_id').apply(get_last_5_valid_records).reset_index(drop=True)
+
+            #st.write("Last 5 Valid Records for Users with 'app_remove' Event (excluding 'app_remove'):")
+            #st.dataframe(last_5_records_df1)
+
+            # Create a pivot table for event_name by Total users
             pivot_table = last_record_df.groupby('event_name').size().reset_index(name='Total users')
+
+            # Sort the pivot table in descending order
             pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+
+            # Add a percentage column
             pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col1:
+
+            col1, col2 = st.columns(2)
+        # with col1:
             #st.write("Pivot Table of Overall event_name by Total users:")
             #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
 
+            filtered_df = df[df['event_name'].isin(included_events)]
 
-            two_event_df = df_sorted[df_sorted['event_name'].isin(['step2_content_edit_screen_open', 'step3_content_saved'])]
+            two_event_df = df_sorted[df_sorted['event_name'].isin(['first_open', 'step1_homescreen_launched'])]
 
             # Get the last record between these two events for each user
             last_between_events_df = two_event_df.groupby('user_pseudo_id').last().reset_index()
@@ -794,9 +722,10 @@ def main():
             #st.write("Record Between first open and homescreen launched for Each User:")
             #st.dataframe(last_between_events_df)
 
-            users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'step2_content_edit_screen_open']['user_pseudo_id']
+            users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'first_open']['user_pseudo_id']
 
-            final_df = df[df['user_pseudo_id'].isin(users_with_first_open)]
+            # Get the last record from the main data for these users
+            final_df1 = df[df['user_pseudo_id'].isin(users_with_first_open)]
             def get_last_valid_record(group):
                 group_reversed = group[::-1]
                 for index, row in group_reversed.iterrows():
@@ -804,276 +733,360 @@ def main():
                         return row
                 return group_reversed.iloc[0]
 
-            final_df = final_df.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
+            final_df1 = final_df1.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
 
             # Display the final DataFrame
-            #st.write("Before content_saved user churn:")
+            #st.write("Before homescreen launched user churn:")
             #st.dataframe(final_df)
 
-            pivot_table = final_df.groupby('event_name').size().reset_index(name='Total users')
+            pivot_table = final_df1.groupby('event_name').size().reset_index(name='Total users')
             pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
             pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col2:
-            st.write("Pivot Table of Before content_saved user churn:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+            with col1:
+                st.write("Pivot Table of Before homescreen launched user churn:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
 
-            pivot_table = filtered_df.groupby('event_name')['user_pseudo_id'].nunique().reset_index(name='Total unique users')
-            first_open_users = pivot_table.loc[pivot_table['event_name'] == 'first_open', 'Total unique users'].values[0]
-            pivot_table['Percentage'] = (pivot_table['Total unique users'] / first_open_users) * 100
-        with col2:
-            st.write("Pivot Table for Specific Events by Total Unique Users:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+                two_event_df = df_sorted[df_sorted['event_name'].isin(['step1_homescreen_launched', 'step2_content_edit_screen_open'])]
 
-            # Filter the DataFrame to only include users who have the `step3_content_saved` event
-            step3_df = df_sorted[df_sorted['event_name'] == 'step3_content_saved']
+                # Get the last record between these two events for each user
+                last_between_events_df = two_event_df.groupby('user_pseudo_id').last().reset_index()
 
-            # Get the users who have the `step3_content_saved` event
-            users_with_step3_content_saved = step3_df['user_pseudo_id'].unique()
+                #st.write("Record Between first open and homescreen launched for Each User:")
+                #st.dataframe(last_between_events_df)
 
-            # Filter the original DataFrame to include only these users
-            filtered_df = df_sorted[df_sorted['user_pseudo_id'].isin(users_with_step3_content_saved)]
+                users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'step1_homescreen_launched']['user_pseudo_id']
 
-            # Function to get the last valid record after `step3_content_saved` for each user
-            def get_last_valid_record_after_step3(group):
-                step3_index = group[group['event_name'] == 'step3_content_saved'].index[0]  # Get the index of `step3_content_saved`
-                subsequent_records = group.loc[step3_index + 1:]  # Select records after `step3_content_saved`
+                final_df2 = df[df['user_pseudo_id'].isin(users_with_first_open)]
+                def get_last_valid_record(group):
+                    group_reversed = group[::-1]
+                    for index, row in group_reversed.iterrows():
+                        if row['event_name'] not in excluded_events:
+                            return row
+                    return group_reversed.iloc[0]
 
-                # Reverse the order to check from last to first
-                subsequent_records_reversed = subsequent_records[::-1]
+                final_df2 = final_df2.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
 
-                for index, row in subsequent_records_reversed.iterrows():
-                    if row['event_name'] not in included_events:
-                        return row
+                # Display the final DataFrame
+                #st.write("Before content_edit_screen_open user churn:")
+                #st.dataframe(final_df)
 
-                # If all subsequent records are in the included list, return the actual last one
-                return subsequent_records.iloc[-1]
-
-            # Apply the function to get the last valid record for each user after `step3_content_saved`
-            final_df = filtered_df.groupby('user_pseudo_id').apply(get_last_valid_record_after_step3).reset_index(drop=True)
-
-            # Display the final DataFrame
-            #st.write("After content_saved user churn:")
-            #st.dataframe(final_df)
-
-            pivot_table = final_df.groupby('event_name').size().reset_index(name='Total users')
-            pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-            pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col1:
-            st.write("Pivot Table of After content_saved user churn:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+                pivot_table = final_df2.groupby('event_name').size().reset_index(name='Total users')
+                pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+                pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
+            with col2:
+                st.write("Pivot Table of Before content_edit_screen_open user churn:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
 
 
-            session_start_df = df[df['event_name'] == 'session_start']
-            # Count occurrences of 'session_start' per user
-            session_counts = session_start_df.groupby('user_pseudo_id').size()
+                pivot_table = last_record_df.groupby('event_name').size().reset_index(name='Total users')
+                pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+                pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
+            with col1:
+                #st.write("Pivot Table of Overall event_name by Total users:")
+                #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
 
-            # Group by the count to get the number of users who had 1, 2, 3, etc. sessions
-            session_count_pivot = session_counts.value_counts().reset_index(name='Total users')
-            session_count_pivot.columns = ['Session Count', 'Total users']
-            session_count_pivot = session_count_pivot.sort_values(by='Session Count')
-            session_count_pivot['Percentage'] = (session_count_pivot['Total users'] /session_count_pivot['Total users'].sum()) * 100
-        with col1:
-            st.write("Pivot Table of Session by Total Users:")
-            st.write(session_count_pivot.style.format({'Percentage': "{:.2f}%"}))
 
-            pivot_table = df.groupby('event_date')['user_pseudo_id'].nunique().reset_index(name='Total unique users')
-            pivot_table = pivot_table.sort_values(by='Total unique users', ascending=False)
-            pivot_table['Percentage'] = (pivot_table['Total unique users'] /  pivot_table['Total unique users'].max()) * 100
-        with col1:
-            st.write("Pivot Table of Datewise user churn:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+                two_event_df = df_sorted[df_sorted['event_name'].isin(['step2_content_edit_screen_open', 'step3_content_saved'])]
 
-        def get_matching_events(group):
-            matching_events = group[group['event_name'].isin(second_event_list)]
-            return matching_events[['user_pseudo_id', 'event_name']]
+                # Get the last record between these two events for each user
+                last_between_events_df = two_event_df.groupby('user_pseudo_id').last().reset_index()
 
-            # Apply the function to the DataFrame to get the matching events
-        #matching_events_df = last_5_records_df.groupby('user_pseudo_id').apply(get_matching_events).reset_index(drop=True)
-        with col2:
-            # Display the table with user ID and matched event
-            #st.write("Users and Matched Events from Second Event List:")
-            #st.dataframe(matching_events_df)
+                #st.write("Record Between first open and homescreen launched for Each User:")
+                #st.dataframe(last_between_events_df)
 
-            total_users = df['user_pseudo_id'].nunique()
-            st.sidebar.header('Total Users')
-            st.sidebar.write(f"Total Users: {total_users}")
+                users_with_first_open = last_between_events_df[last_between_events_df['event_name'] == 'step2_content_edit_screen_open']['user_pseudo_id']
+
+                final_df3 = df[df['user_pseudo_id'].isin(users_with_first_open)]
+                def get_last_valid_record(group):
+                    group_reversed = group[::-1]
+                    for index, row in group_reversed.iterrows():
+                        if row['event_name'] not in excluded_events:
+                            return row
+                    return group_reversed.iloc[0]
+
+                final_df3 = final_df3.groupby('user_pseudo_id').apply(get_last_valid_record).reset_index(drop=True)
+
+                # Display the final DataFrame
+                #st.write("Before content_saved user churn:")
+                #st.dataframe(final_df)
+
+                pivot_table = final_df3.groupby('event_name').size().reset_index(name='Total users')
+                pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+                pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
+            with col2:
+                st.write("Pivot Table of Before content_saved user churn:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                pivot_table = filtered_df.groupby('event_name')['user_pseudo_id'].nunique().reset_index(name='Total unique users')
+                first_open_users = pivot_table.loc[pivot_table['event_name'] == 'first_open', 'Total unique users'].values[0]
+                pivot_table['Percentage'] = (pivot_table['Total unique users'] / first_open_users) * 100
+            with col2:
+                st.write("Pivot Table for Specific Events by Total Unique Users:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                # Filter the DataFrame to only include users who have the `step3_content_saved` event
+                step3_df = df_sorted[df_sorted['event_name'] == 'step3_content_saved']
+
+                # Get the users who have the `step3_content_saved` event
+                users_with_step3_content_saved = step3_df['user_pseudo_id'].unique()
+
+                # Filter the original DataFrame to include only these users
+                filtered_df = df_sorted[df_sorted['user_pseudo_id'].isin(users_with_step3_content_saved)]
+
+                # Function to get the last valid record after `step3_content_saved` for each user
+                def get_last_valid_record_after_step3(group):
+                    step3_index = group[group['event_name'] == 'step3_content_saved'].index[0]  # Get the index of `step3_content_saved`
+                    subsequent_records = group.loc[step3_index + 1:]  # Select records after `step3_content_saved`
+
+                    # Reverse the order to check from last to first
+                    subsequent_records_reversed = subsequent_records[::-1]
+
+                    for index, row in subsequent_records_reversed.iterrows():
+                        if row['event_name'] not in included_events:
+                            return row
+
+                    # If all subsequent records are in the included list, return the actual last one
+                    return subsequent_records.iloc[-1]
+
+                # Apply the function to get the last valid record for each user after `step3_content_saved`
+                final_df4 = filtered_df.groupby('user_pseudo_id').apply(get_last_valid_record_after_step3).reset_index(drop=True)
+
+                # Display the final DataFrame
+                #st.write("After content_saved user churn:")
+                #st.dataframe(final_df)
+
+                pivot_table = final_df4.groupby('event_name').size().reset_index(name='Total users')
+                pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+                pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
+            with col1:
+                st.write("Pivot Table of After content_saved user churn:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+
+#new
+
+
+                session_start_df = df[df['event_name'] == 'session_start']
+                # Count occurrences of 'session_start' per user
+                session_counts = session_start_df.groupby('user_pseudo_id').size()
+
+                # Group by the count to get the number of users who had 1, 2, 3, etc. sessions
+                session_count_pivot = session_counts.value_counts().reset_index(name='Total users')
+                session_count_pivot.columns = ['Session Count', 'Total users']
+                session_count_pivot = session_count_pivot.sort_values(by='Session Count')
+                session_count_pivot['Percentage'] = (session_count_pivot['Total users'] /session_count_pivot['Total users'].sum()) * 100
+            with col1:
+                st.write("Pivot Table of Session by Total Users:")
+                st.write(session_count_pivot.style.format({'Percentage': "{:.2f}%"}))
+
+                pivot_table = df.groupby('event_date')['user_pseudo_id'].nunique().reset_index(name='Total unique users')
+                pivot_table = pivot_table.sort_values(by='Total unique users', ascending=False)
+                pivot_table['Percentage'] = (pivot_table['Total unique users'] /  pivot_table['Total unique users'].max()) * 100
+            with col1:
+                st.write("Pivot Table of Datewise user churn:")
+                st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+            def get_matching_events(group):
+                matching_events = group[group['event_name'].isin(second_event_list)]
+                return matching_events[['user_pseudo_id', 'event_name']]
+
+                # Apply the function to the DataFrame to get the matching events
+                #matching_events_df = last_5_records_df.groupby('user_pseudo_id').apply(get_matching_events).reset_index(drop=True)
+                #with col2:
+                # Display the table with user ID and matched event
+                #st.write("Users and Matched Events from Second Event List:")
+                #st.dataframe(matching_events_df)
+
+                total_users = df['user_pseudo_id'].nunique()
+                st.sidebar.header('Total Users')
+                st.sidebar.write(f"Total Users: {total_users}")
 
             matched_events_list = [
-               "add_img_btn", "addtext_btn", "paid_ad_impression","ai__category_selected", "ai_avatar_category_selected", "ai_avatar_couple_selected",
-                "ai_avatar_female_selected", "ai_avatar_male_selected", "ai_avatarai_category_selected", "ai_background_category_selected", "ai_backgroundai_category_selected",
-                "ai_barberai_category_selected", "ai_caption_category_selected", "ai_celebratingideas_category_selected", "ai_chat_avatarai_catgory_selected", "ai_chat_btn_click",
-                "ai_chat_business_catgory_selected", "ai_chat_caption_catgory_selected", "ai_chat_fun_catgory_selected", "ai_chat_generate_now_btn_click", "ai_chat_love_catgory_selected",
-                "ai_chat_social_catgory_selected", "ai_chat_wallpaperai_catgory_selected", "ai_chat_work_catgory_selected", "ai_chat_writing_catgory_selected", "ai_common_category_selected",
-                "ai_creator_btn_click", "ai_download_btn_click", "ai_facebook_share_btn", "ai_fashionai_category_selected", "ai_festival_retry_btn_click",
-                "ai_festival_retry_popup_open", "ai_festival_template_edit_click", "ai_image_btn_click", "ai_image_generate_now_btn_click", "ai_image_regenerate_btn_click",
-                "ai_image_save_jpg_pro_open", "ai_image_selected_share_screen", "ai_instagram_share_btn", "ai_interiorai_category_selected", "ai_invitation_retry_btn_click",
-                "ai_invitation_retry_popup_open", "ai_invitation_template_edit_click", "ai_jewelleryai_category_selected", "ai_logo_category_selected",
-                "ai_logo_subcategory_selected", "ai_logoai_category_selected", "ai_love_category_selected", "ai_main_screen_skip_btn_click", "ai_normal_festival_template_edit_click",
-                "ai_normal_invitation_template_edit_click", "ai_others_category_selected", "ai_poster_edit_btn_click", "ai_poster_retry_btn_click",
-                "ai_poster_retry_popup_open", "ai_ratio_selected_16_9", "ai_ratio_selected_1_1", "ai_ratio_selected_9_16", "ai_ratio_selected_portrait", "ai_ratio_selected_square",
-                "ai_regenerate_btn_click", "ai_remove_watermark_one_time_btn_clicked", "ai_remove_watermark_pro_clicked", "ai_remove_watermark_pro_purchase_success", "ai_retry_btn_click",
-                "ai_share_btn_click", "ai_sticker_category_selected", "ai_wallpaper_category_selected", "ai_wallpaperai_category_selected", "ai_wallpapper_category_selected",
-                "ai_whatsapp_share_btn", "ai_work_category_selected", "align_btn", "alphabetic_element_btn", "ambedkarjayanti_element_btn",
-                "animals_element_btn", "aprilfool_element_btn", "arrow_element_btn", "art_element_btn", "autofill_btn",
-                "back_to_lobby_yes_btn", "barbie_element_btn", "bg_btn", "bg_choosecolor_btn", "bg_gradiant_btn",
-                "bg_import_btn", "bg_pickcolor_btn", "bg_remove_btn", "bg_reset_btn", "bg_solid_btn",
-                "birthday_element_btn", "boho_element_btn", "bookday_element_btn", "brush_element_btn", "bubbleshapefont_element_btn",
-                "business_element_btn", "callout_element_btn", "cartoon_element_btn", "choose_color_btn", "christmas_element_btn",
-                "circle_element_btn", "cloud_element_btn", "cnw_btn_click", "creative_element_btn", "cricket_element_btn",
-                "cyberpunk_element_btn", "diwali_element_btn", "dont_losseoffer_subscribe_btn_click", "doodle_element_btn", "download_btn_click",
-                "dp__content_edit_clicked", "dp_btn_click", "dp_cricket_content_edit_clicked", "dp_devotional_content_edit_clicked", "dp_festival_content_edit_clicked",
-                "dp_friendshipday_content_edit_clicked", "dp_goodmorning_content_edit_clicked", "dp_goodthoughts_content_edit_clicked", "dp_independenceday_content_edit_clicked", "dp_janmashtami_content_edit_clicked",
-                "dp_leadersquotes_content_edit_clicked", "dp_nagpanchami_content_edit_clicked", "dp_olympic2024_content_edit_clicked", "dp_rakshabandhan_content_edit_clicked", "dp_remove_watermark_btn_click",
-                "dp_remove_watermark_one_time_btn_clicked", "dp_remove_watermark_popup_open", "dp_remove_watermark_pro_clicked", "dp_save_jpg_pro_open", "dp_shravanmass_content_edit_clicked",
-                "draft_btn_click", "durgapooja_element_btn", "dussehra_element_btn", "earthday_element_btn", "easterday_element_btn",
-                "editing_ai_chat_click", "editing_ai_chat_continuewrite", "editing_ai_chat_customtext", "editing_ai_chat_formal", "editing_ai_chat_improve",
-                "editing_ai_chat_shorten", "editing_ai_image_click", "editing_ai_image_import", "editing_total_ai_chat_used", "editing_total_ai_image_used",
-                "editor_screen_open", "education_element_btn", "effect_btn", "element_btn", "element_next_btn_click",
-                "emoji_element_btn", "environmental_element_btn", "events_btn_click", "facebook_share_btn", "feather_element_btn",
-                "feedback_editleave_close_without_submit", "feedback_editleave_open", "feedback_editleave_submit", "feedback_postediting_open", "feedback_postediting_submit",
-                "festival_element_btn", "first_open", "fitness_element_btn", "fl_bikeevent_edit_btn_click", "fl_birthday_edit_btn_click",
-                "fl_btn_click", "fl_business_edit_btn_click", "fl_camping_edit_btn_click", "fl_contest_edit_btn_click", "fl_cricket_edit_btn_click",
-                "fl_educational_edit_btn_click", "fl_entertainment_edit_btn_click", "fl_fitness_edit_btn_click", "fl_food_drink_edit_btn_click", "fl_football_edit_btn_click",
-                "fl_gettogether_edit_btn_click", "fl_hiring_edit_btn_click", "fl_inaugurations_edit_btn_click", "fl_lifestyle_edit_btn_click", "fl_newyearparty_edit_btn_click",
-                "fl_productbranding_edit_btn_click", "fl_realestate_edit_btn_click", "fl_sale_edit_btn_click", "fl_salon_edit_btn_click", "fl_seminar_edit_btn_click",
-                "fl_social_edit_btn_click", "fl_thanksgiving_edit_btn_click", "fl_travel_edit_btn_click", "flag_element_btn", "floral_element_btn",
-                "font_btn", "football_element_btn", "frame_image_save_jpg_pro_open", "frame_remove_watermark_popup_open", "frame_remove_watermark_pro_clicked",
-                "frames_element_btn", "friendshipday_element_btn", "ft_aprilfoolday_edit_btn_click", "ft_bhaidooj_edit_btn_click", "ft_btn_click",
-                "ft_childrensday_edit_btn_click", "ft_christmas_edit_btn_click", "ft_columbusday_edit_btn_click", "ft_diwali_edit_btn_click", "ft_durgapooja_edit_btn_click",
-                "ft_dussehra_edit_btn_click", "ft_earthday_edit_btn_click", "ft_easterday_edit_btn_click", "ft_electionsday_edit_btn_click", "ft_environmentday_edit_btn_click",
-                "ft_friendshipday_edit_btn_click", "ft_ganeshchaturthi_edit_btn_click", "ft_goodfriday_edit_btn_click", "ft_gudipadwa_edit_btn_click", "ft_gurunanakjayanti_edit_btn_click",
-                "ft_gurupurnima_edit_btn_click", "ft_halloween_edit_btn_click", "ft_holi_edit_btn_click", "ft_independenceday_edit_btn_click", "ft_janmashtami_edit_btn_click",
-                "ft_kalichaudas_edit_btn_click", "ft_karwachauth_edit_btn_click", "ft_labhpancham_edit_btn_click", "ft_laborday_edit_btn_click", "ft_lohri_edit_btn_click",
-                "ft_mahashivratri_edit_btn_click", "ft_makarsankranti_edit_btn_click", "ft_memorialday_edit_btn_click", "ft_micchamidukkadam_edit_btn_click", "ft_muharram_edit_btn_click",
-                "ft_navratri_edit_btn_click", "ft_newyear_edit_btn_click", "ft_onam_edit_btn_click", "ft_patricksday_edit_btn_click", "ft_pongal_edit_btn_click",
-                "ft_rakshabandhan_edit_btn_click", "ft_ramnavami_edit_btn_click", "ft_republicday_edit_btn_click", "ft_sharadpurnima_edit_btn_click", "ft_shravanmaas_edit_btn_click",
-                "ft_shubhdhanteras_edit_btn_click", "ft_siblingsday_edit_btn_click", "ft_spring_edit_btn_click", "ft_teachersday_edit_btn_click", "ft_vaghbaras_edit_btn_click",
-                "ft_valentinesday_edit_btn_click", "ft_vasantpanchami_edit_btn_click", "ft_veteransday_edit_btn_click", "ft_womensday_edit_btn_click", "ft_worldbookday_edit_btn_click",
-                "ft_worldhealthday_edit_btn_click", "ft_worldmusicday_edit_btn_click", "ft_yogaday_edit_btn_click", "ft_youthday_edit_btn_click", "gandhijayanti_element_btn",
-                "ganeshchaturthi_element_btn", "goodfriday_element_btn", "gradient_bg_btn", "grid_element_btn", "gudipadwa_element_btn",
-                "halloween_element_btn", "handcraft_element_btn", "health_element_btn", "heart_element_btn", "hiring_element_btn",
-                "holi_element_btn", "independenceday_element_btn", "invitation_edit_btn_click", "janmashtami_element_btn", "karwachauth_element_btn",
-                "keyboard_btn", "krishna_element_btn", "ladder_shapefont_element_btn", "lagan_lagna_element_btn", "labor_element_btn",
-                "line_element_btn", "linkedin_share_btn", "lohri_element_btn", "love_element_btn", "mahashivratri_element_btn",
-                "makarsankranti_element_btn", "makarsankranti_offer_click", "makarsankranti_offer_continue", "makarsankranti_offer_open", "makarsankranti_offer_skip",
-                "makarsankranti_offer_subscribe", "makarsankranti_offer_yes", "makarsankranti_offer_skip", "makarsankranti_offer_subscribe", "makarsankranti_offer_yes",
-                "martinlutherkingday_element_btn", "memory_element_btn", "micchamidukkadam_element_btn", "music_element_btn", "nagpanchami_element_btn",
-                "navratri_element_btn", "newyear_element_btn", "newyearparty_element_btn", "onam_element_btn", "others_element_btn",
-                "pencil_element_btn", "photodoodle_element_btn", "pongal_element_btn", "polygon_element_btn", "poster_edit_btn_click",
-                "productbranding_element_btn", "rakhabandhan_element_btn", "ramnavami_element_btn", "ramzan_element_btn", "realestate_element_btn",
-                "rectangleshape_element_btn", "republicday_element_btn", "rocketshapefont_element_btn", "sale_element_btn", "sarcastic_element_btn",
-                "savetriptap_btn", "scroll_element_btn", "sharadpurnima_element_btn", "shapes_btn", "shravanmass_element_btn",
-                "shubhdhanteras_element_btn", "shubhalaganshape_element_btn", "siblingsday_element_btn", "spring_element_btn", "square_btn",
-                "sticker_btn", "sun_element_btn", "summershape_element_btn", "thanksgiving_element_btn", "travel_element_btn",
-                "tulip_element_btn", "twitter_share_btn", "vaghbaras_element_btn", "valentinesday_element_btn", "vasantpanchami_element_btn",
-                "veteransday_element_btn", "victoryday_element_btn", "wall_element_btn", "whatsapp_share_btn", "womensday_element_btn",
-                "worldbookday_element_btn", "worldhealthday_element_btn", "worldmusicday_element_btn", "yogaday_element_btn", "youthday_element_btn",
-                "onboarding_start", "onboarding_complete", "onboarding_skip",
-                "leaderboard_success", "social_share", "social_like", "social_comment", "social_follow", "social_unfollow", "social_message", "social_post",
-                "social_story", "social_tag", "social_mention", "social_group_join", "social_group_leave", "social_group_create", "social_group_delete",
-                "social_event_create", "social_event_update", "social_event_delete", "social_event_invite", "social_event_attend", "social_event_unattend",
-                "social_event_share", "social_event_comment", "social_event_like", "social_event_reaction", "social_event_rating", "social_event_review",
-                "social_event_feedback", "social_event_photo_upload", "social_event_video_upload", "social_event_link_share", "social_event_post",
-                "social_event_story", "social_event_tag", "social_event_mention", "social_event_share_message", "social_event_share_comment", "social_event_share_reaction",
-                "onboard_4th_screen_skip", "onboard_4th_screen_visible", "opacity_btn", "ornaments_element_btn", "paper_element_btn", "plastic_element_btn",
-                "pongal_element_btn", "pro_screen_open", "profile_btn", "profile_btn_click", "profile_edit_btn", "profile_save_btn", "profile_upload_btn",
-                "rakshabandhan_element_btn", "ramadan_element_btn", "ramnavmi_element_btn", "remove_watermark_btn_click", "remove_watermark_one_time_btn_clicked",
-                "remove_watermark_popup_open", "remove_watermark_pro_clicked", "remove_watermark_pro_purchase_success", "replace_img_btn", "republicday_element_btn",
-                "result_failed_time", "retro_element_btn", "retro_element_used", "reward_ad_show", "rotation_btn", "sale_element_btn", "save_as_darft_btn",
-                "save_jpg_pro_ad_watched", "save_jpg_pro_buypro_clicked", "save_jpg_pro_open", "search_btn", "search_no_result_found", "shapes_element_btn",
-                "share_screen_remove_watermark_btn_click", "share_screen_remove_watermark_popup_open", "siblingsday_element_btn", "size_btn", "sm_btn_click",
-                "sm_facebookcovers_edit_btn_click", "sm_facebookpost_edit_btn_click", "sm_instagrampost_edit_btn_click", "sm_instagramstory_edit_btn_click",
-                "sm_linkedinpost_edit_btn_click", "sm_photocollage_edit_btn_click", "sm_quotes_edit_btn_click", "sm_whatsappstatus_edit_btn_click",
-                "sm_youtubebanner_edit_btn_click", "sm_youtubethumbnails_edit_btn_click", "socialmedia_element_btn", "solid_bg_btn", "space_btn",
-                "sparkles_element_btn", "spiritual_element_btn", "sports_element_btn", "st_content_edit_btn_click", "stamp_element_btn",
-                "step2_content_edit_screen_open", "support_btn_click", "tattoo_element_btn", "text_btn", "text_image_ai_btn_click", "tr_ai_chat_btn_click",
-                "tr_ai_chat_business_catgory_selected", "tr_ai_chat_caption_catgory_selected", "tr_ai_chat_fun_catgory_selected", "tr_ai_chat_love_catgory_selected",
-                "tr_ai_chat_social_catgory_selected", "tr_ai_chat_work_catgory_selected", "tr_ai_chat_writing_catgory_selected", "tr_ai_toggle_btn_click",
-                "tr_btn_click", "tr_text_image_ai_btn_click", "travel_element_btn", "usa_element_btn", "valentinesday_element_btn", "vasantpanchami_element_btn",
-                "vc_art_design_edit_btn_click", "vc_automobile_edit_btn_click", "vc_beauty_salon_edit_btn_click", "vc_btn_click", "vc_business_edit_btn_click",
-                "vc_corporate_edit_btn_click", "vc_education_edit_btn_click", "vc_entertainmnet_edit_btn_click", "vc_eventplanner_edit_btn_click",
-                "vc_fashion_edit_btn_click", "vc_fitness_edit_btn_click", "vc_food_edit_btn_click", "vc_homeservice_edit_btn_click", "vc_jewellery_edit_btn_click",
-                "vc_lawyer_edit_btn_click", "vc_medical_edit_btn_click", "vc_photography_edit_btn_click", "vc_realestate_edit_btn_click", "vc_spa_massage_edit_btn_click",
-                "vc_technology_edit_btn_click", "vc_travel_edit_btn_click", "vc_visitingcards_edit_btn_click", "watch_tutorial_btn", "wedding_element_btn",
-                "whatsapp_share_btn", "womensday_element_btn", "youthday_element_btn", "zodiac_element_btn"
+                   "add_img_btn", "addtext_btn", "paid_ad_impression","ai__category_selected", "ai_avatar_category_selected", "ai_avatar_couple_selected",
+                    "ai_avatar_female_selected", "ai_avatar_male_selected", "ai_avatarai_category_selected", "ai_background_category_selected", "ai_backgroundai_category_selected",
+                    "ai_barberai_category_selected", "ai_caption_category_selected", "ai_celebratingideas_category_selected", "ai_chat_avatarai_catgory_selected", "ai_chat_btn_click",
+                    "ai_chat_business_catgory_selected", "ai_chat_caption_catgory_selected", "ai_chat_fun_catgory_selected", "ai_chat_generate_now_btn_click", "ai_chat_love_catgory_selected",
+                    "ai_chat_social_catgory_selected", "ai_chat_wallpaperai_catgory_selected", "ai_chat_work_catgory_selected", "ai_chat_writing_catgory_selected", "ai_common_category_selected",
+                    "ai_creator_btn_click", "ai_download_btn_click", "ai_facebook_share_btn", "ai_fashionai_category_selected", "ai_festival_retry_btn_click",
+                    "ai_festival_retry_popup_open", "ai_festival_template_edit_click", "ai_image_btn_click", "ai_image_generate_now_btn_click", "ai_image_regenerate_btn_click",
+                    "ai_image_save_jpg_pro_open", "ai_image_selected_share_screen", "ai_instagram_share_btn", "ai_interiorai_category_selected", "ai_invitation_retry_btn_click",
+                    "ai_invitation_retry_popup_open", "ai_invitation_template_edit_click", "ai_jewelleryai_category_selected", "ai_logo_category_selected",
+                    "ai_logo_subcategory_selected", "ai_logoai_category_selected", "ai_love_category_selected", "ai_main_screen_skip_btn_click", "ai_normal_festival_template_edit_click",
+                    "ai_normal_invitation_template_edit_click", "ai_others_category_selected", "ai_poster_edit_btn_click", "ai_poster_retry_btn_click",
+                    "ai_poster_retry_popup_open", "ai_ratio_selected_16_9", "ai_ratio_selected_1_1", "ai_ratio_selected_9_16", "ai_ratio_selected_portrait", "ai_ratio_selected_square",
+                    "ai_regenerate_btn_click", "ai_remove_watermark_one_time_btn_clicked", "ai_remove_watermark_pro_clicked", "ai_remove_watermark_pro_purchase_success", "ai_retry_btn_click",
+                    "ai_share_btn_click", "ai_sticker_category_selected", "ai_wallpaper_category_selected", "ai_wallpaperai_category_selected", "ai_wallpapper_category_selected",
+                    "ai_whatsapp_share_btn", "ai_work_category_selected", "align_btn", "alphabetic_element_btn", "ambedkarjayanti_element_btn",
+                    "animals_element_btn", "aprilfool_element_btn", "arrow_element_btn", "art_element_btn", "autofill_btn",
+                    "back_to_lobby_yes_btn", "barbie_element_btn", "bg_btn", "bg_choosecolor_btn", "bg_gradiant_btn",
+                    "bg_import_btn", "bg_pickcolor_btn", "bg_remove_btn", "bg_reset_btn", "bg_solid_btn",
+                    "birthday_element_btn", "boho_element_btn", "bookday_element_btn", "brush_element_btn", "bubbleshapefont_element_btn",
+                    "business_element_btn", "callout_element_btn", "cartoon_element_btn", "choose_color_btn", "christmas_element_btn",
+                    "circle_element_btn", "cloud_element_btn", "cnw_btn_click", "creative_element_btn", "cricket_element_btn",
+                    "cyberpunk_element_btn", "diwali_element_btn", "dont_losseoffer_subscribe_btn_click", "doodle_element_btn", "download_btn_click",
+                    "dp__content_edit_clicked", "dp_btn_click", "dp_cricket_content_edit_clicked", "dp_devotional_content_edit_clicked", "dp_festival_content_edit_clicked",
+                    "dp_friendshipday_content_edit_clicked", "dp_goodmorning_content_edit_clicked", "dp_goodthoughts_content_edit_clicked", "dp_independenceday_content_edit_clicked", "dp_janmashtami_content_edit_clicked",
+                    "dp_leadersquotes_content_edit_clicked", "dp_nagpanchami_content_edit_clicked", "dp_olympic2024_content_edit_clicked", "dp_rakshabandhan_content_edit_clicked", "dp_remove_watermark_btn_click",
+                    "dp_remove_watermark_one_time_btn_clicked", "dp_remove_watermark_popup_open", "dp_remove_watermark_pro_clicked", "dp_save_jpg_pro_open", "dp_shravanmass_content_edit_clicked",
+                    "draft_btn_click", "durgapooja_element_btn", "dussehra_element_btn", "earthday_element_btn", "easterday_element_btn",
+                    "editing_ai_chat_click", "editing_ai_chat_continuewrite", "editing_ai_chat_customtext", "editing_ai_chat_formal", "editing_ai_chat_improve",
+                    "editing_ai_chat_shorten", "editing_ai_image_click", "editing_ai_image_import", "editing_total_ai_chat_used", "editing_total_ai_image_used",
+                    "editor_screen_open", "education_element_btn", "effect_btn", "element_btn", "element_next_btn_click",
+                    "emoji_element_btn", "environmental_element_btn", "events_btn_click", "facebook_share_btn", "feather_element_btn",
+                    "feedback_editleave_close_without_submit", "feedback_editleave_open", "feedback_editleave_submit", "feedback_postediting_open", "feedback_postediting_submit",
+                    "festival_element_btn", "first_open", "fitness_element_btn", "fl_bikeevent_edit_btn_click", "fl_birthday_edit_btn_click",
+                    "fl_btn_click", "fl_business_edit_btn_click", "fl_camping_edit_btn_click", "fl_contest_edit_btn_click", "fl_cricket_edit_btn_click",
+                    "fl_educational_edit_btn_click", "fl_entertainment_edit_btn_click", "fl_fitness_edit_btn_click", "fl_food_drink_edit_btn_click", "fl_football_edit_btn_click",
+                    "fl_gettogether_edit_btn_click", "fl_hiring_edit_btn_click", "fl_inaugurations_edit_btn_click", "fl_lifestyle_edit_btn_click", "fl_newyearparty_edit_btn_click",
+                    "fl_productbranding_edit_btn_click", "fl_realestate_edit_btn_click", "fl_sale_edit_btn_click", "fl_salon_edit_btn_click", "fl_seminar_edit_btn_click",
+                    "fl_social_edit_btn_click", "fl_thanksgiving_edit_btn_click", "fl_travel_edit_btn_click", "flag_element_btn", "floral_element_btn",
+                    "font_btn", "football_element_btn", "frame_image_save_jpg_pro_open", "frame_remove_watermark_popup_open", "frame_remove_watermark_pro_clicked",
+                    "frames_element_btn", "friendshipday_element_btn", "ft_aprilfoolday_edit_btn_click", "ft_bhaidooj_edit_btn_click", "ft_btn_click",
+                    "ft_childrensday_edit_btn_click", "ft_christmas_edit_btn_click", "ft_columbusday_edit_btn_click", "ft_diwali_edit_btn_click", "ft_durgapooja_edit_btn_click",
+                    "ft_dussehra_edit_btn_click", "ft_earthday_edit_btn_click", "ft_easterday_edit_btn_click", "ft_electionsday_edit_btn_click", "ft_environmentday_edit_btn_click",
+                    "ft_friendshipday_edit_btn_click", "ft_ganeshchaturthi_edit_btn_click", "ft_goodfriday_edit_btn_click", "ft_gudipadwa_edit_btn_click", "ft_gurunanakjayanti_edit_btn_click",
+                    "ft_gurupurnima_edit_btn_click", "ft_halloween_edit_btn_click", "ft_holi_edit_btn_click", "ft_independenceday_edit_btn_click", "ft_janmashtami_edit_btn_click",
+                    "ft_kalichaudas_edit_btn_click", "ft_karwachauth_edit_btn_click", "ft_labhpancham_edit_btn_click", "ft_laborday_edit_btn_click", "ft_lohri_edit_btn_click",
+                    "ft_mahashivratri_edit_btn_click", "ft_makarsankranti_edit_btn_click", "ft_memorialday_edit_btn_click", "ft_micchamidukkadam_edit_btn_click", "ft_muharram_edit_btn_click",
+                    "ft_navratri_edit_btn_click", "ft_newyear_edit_btn_click", "ft_onam_edit_btn_click", "ft_patricksday_edit_btn_click", "ft_pongal_edit_btn_click",
+                    "ft_rakshabandhan_edit_btn_click", "ft_ramnavami_edit_btn_click", "ft_republicday_edit_btn_click", "ft_sharadpurnima_edit_btn_click", "ft_shravanmaas_edit_btn_click",
+                    "ft_shubhdhanteras_edit_btn_click", "ft_siblingsday_edit_btn_click", "ft_spring_edit_btn_click", "ft_teachersday_edit_btn_click", "ft_vaghbaras_edit_btn_click",
+                    "ft_valentinesday_edit_btn_click", "ft_vasantpanchami_edit_btn_click", "ft_veteransday_edit_btn_click", "ft_womensday_edit_btn_click", "ft_worldbookday_edit_btn_click",
+                    "ft_worldhealthday_edit_btn_click", "ft_worldmusicday_edit_btn_click", "ft_yogaday_edit_btn_click", "ft_youthday_edit_btn_click", "gandhijayanti_element_btn",
+                    "ganeshchaturthi_element_btn", "goodfriday_element_btn", "gradient_bg_btn", "grid_element_btn", "gudipadwa_element_btn",
+                    "halloween_element_btn", "handcraft_element_btn", "health_element_btn", "heart_element_btn", "hiring_element_btn",
+                    "holi_element_btn", "independenceday_element_btn", "invitation_edit_btn_click", "janmashtami_element_btn", "karwachauth_element_btn",
+                    "keyboard_btn", "krishna_element_btn", "ladder_shapefont_element_btn", "lagan_lagna_element_btn", "labor_element_btn",
+                    "line_element_btn", "linkedin_share_btn", "lohri_element_btn", "love_element_btn", "mahashivratri_element_btn",
+                    "makarsankranti_element_btn", "makarsankranti_offer_click", "makarsankranti_offer_continue", "makarsankranti_offer_open", "makarsankranti_offer_skip",
+                    "makarsankranti_offer_subscribe", "makarsankranti_offer_yes", "makarsankranti_offer_skip", "makarsankranti_offer_subscribe", "makarsankranti_offer_yes",
+                    "martinlutherkingday_element_btn", "memory_element_btn", "micchamidukkadam_element_btn", "music_element_btn", "nagpanchami_element_btn",
+                    "navratri_element_btn", "newyear_element_btn", "newyearparty_element_btn", "onam_element_btn", "others_element_btn",
+                    "pencil_element_btn", "photodoodle_element_btn", "pongal_element_btn", "polygon_element_btn", "poster_edit_btn_click",
+                    "productbranding_element_btn", "rakhabandhan_element_btn", "ramnavami_element_btn", "ramzan_element_btn", "realestate_element_btn",
+                    "rectangleshape_element_btn", "republicday_element_btn", "rocketshapefont_element_btn", "sale_element_btn", "sarcastic_element_btn",
+                    "savetriptap_btn", "scroll_element_btn", "sharadpurnima_element_btn", "shapes_btn", "shravanmass_element_btn",
+                    "shubhdhanteras_element_btn", "shubhalaganshape_element_btn", "siblingsday_element_btn", "spring_element_btn", "square_btn",
+                    "sticker_btn", "sun_element_btn", "summershape_element_btn", "thanksgiving_element_btn", "travel_element_btn",
+                    "tulip_element_btn", "twitter_share_btn", "vaghbaras_element_btn", "valentinesday_element_btn", "vasantpanchami_element_btn",
+                    "veteransday_element_btn", "victoryday_element_btn", "wall_element_btn", "whatsapp_share_btn", "womensday_element_btn",
+                    "worldbookday_element_btn", "worldhealthday_element_btn", "worldmusicday_element_btn", "yogaday_element_btn", "youthday_element_btn",
+                    "onboarding_start", "onboarding_complete", "onboarding_skip",
+                    "leaderboard_success", "social_share", "social_like", "social_comment", "social_follow", "social_unfollow", "social_message", "social_post",
+                    "social_story", "social_tag", "social_mention", "social_group_join", "social_group_leave", "social_group_create", "social_group_delete",
+                    "social_event_create", "social_event_update", "social_event_delete", "social_event_invite", "social_event_attend", "social_event_unattend",
+                    "social_event_share", "social_event_comment", "social_event_like", "social_event_reaction", "social_event_rating", "social_event_review",
+                    "social_event_feedback", "social_event_photo_upload", "social_event_video_upload", "social_event_link_share", "social_event_post",
+                    "social_event_story", "social_event_tag", "social_event_mention", "social_event_share_message", "social_event_share_comment", "social_event_share_reaction",
+                    "onboard_4th_screen_skip", "onboard_4th_screen_visible", "opacity_btn", "ornaments_element_btn", "paper_element_btn", "plastic_element_btn",
+                    "pongal_element_btn", "pro_screen_open", "profile_btn", "profile_btn_click", "profile_edit_btn", "profile_save_btn", "profile_upload_btn",
+                    "rakshabandhan_element_btn", "ramadan_element_btn", "ramnavmi_element_btn", "remove_watermark_btn_click", "remove_watermark_one_time_btn_clicked",
+                    "remove_watermark_popup_open", "remove_watermark_pro_clicked", "remove_watermark_pro_purchase_success", "replace_img_btn", "republicday_element_btn",
+                    "result_failed_time", "retro_element_btn", "retro_element_used", "reward_ad_show", "rotation_btn", "sale_element_btn", "save_as_darft_btn",
+                    "save_jpg_pro_ad_watched", "save_jpg_pro_buypro_clicked", "save_jpg_pro_open", "search_btn", "search_no_result_found", "shapes_element_btn",
+                    "share_screen_remove_watermark_btn_click", "share_screen_remove_watermark_popup_open", "siblingsday_element_btn", "size_btn", "sm_btn_click",
+                    "sm_facebookcovers_edit_btn_click", "sm_facebookpost_edit_btn_click", "sm_instagrampost_edit_btn_click", "sm_instagramstory_edit_btn_click",
+                    "sm_linkedinpost_edit_btn_click", "sm_photocollage_edit_btn_click", "sm_quotes_edit_btn_click", "sm_whatsappstatus_edit_btn_click",
+                    "sm_youtubebanner_edit_btn_click", "sm_youtubethumbnails_edit_btn_click", "socialmedia_element_btn", "solid_bg_btn", "space_btn",
+                    "sparkles_element_btn", "spiritual_element_btn", "sports_element_btn", "st_content_edit_btn_click", "stamp_element_btn",
+                    "step2_content_edit_screen_open", "support_btn_click", "tattoo_element_btn", "text_btn", "text_image_ai_btn_click", "tr_ai_chat_btn_click",
+                    "tr_ai_chat_business_catgory_selected", "tr_ai_chat_caption_catgory_selected", "tr_ai_chat_fun_catgory_selected", "tr_ai_chat_love_catgory_selected",
+                    "tr_ai_chat_social_catgory_selected", "tr_ai_chat_work_catgory_selected", "tr_ai_chat_writing_catgory_selected", "tr_ai_toggle_btn_click",
+                    "tr_btn_click", "tr_text_image_ai_btn_click", "travel_element_btn", "usa_element_btn", "valentinesday_element_btn", "vasantpanchami_element_btn",
+                    "vc_art_design_edit_btn_click", "vc_automobile_edit_btn_click", "vc_beauty_salon_edit_btn_click", "vc_btn_click", "vc_business_edit_btn_click",
+                    "vc_corporate_edit_btn_click", "vc_education_edit_btn_click", "vc_entertainmnet_edit_btn_click", "vc_eventplanner_edit_btn_click",
+                    "vc_fashion_edit_btn_click", "vc_fitness_edit_btn_click", "vc_food_edit_btn_click", "vc_homeservice_edit_btn_click", "vc_jewellery_edit_btn_click",
+                    "vc_lawyer_edit_btn_click", "vc_medical_edit_btn_click", "vc_photography_edit_btn_click", "vc_realestate_edit_btn_click", "vc_spa_massage_edit_btn_click",
+                    "vc_technology_edit_btn_click", "vc_travel_edit_btn_click", "vc_visitingcards_edit_btn_click", "watch_tutorial_btn", "wedding_element_btn",
+                    "whatsapp_share_btn", "womensday_element_btn", "youthday_element_btn", "zodiac_element_btn"
 
-            ]
+                ]
 
 
 
-        matched_events_list = [
-                "first_open","step1_homescreen_launched", "step2_content_edit_screen_open", "step3_content_saved"
-            ]
+            matched_events_list = [
+                    "first_open","step1_homescreen_launched", "step2_content_edit_screen_open", "step3_content_saved"
+                ]
 
-            # Filter the main data to include only matched events for 'app_remove' users
-        matched_events_df = app_remove_df[app_remove_df['event_name'].isin(matched_events_list)]
+                # Filter the main data to include only matched events for 'app_remove' users
+            matched_events_df = app_remove_df[app_remove_df['event_name'].isin(matched_events_list)]
+
+
+                # Define the labels based on event sequences
+            def label_event_flow(events):
+                    unique_events = list(dict.fromkeys(events))  # Remove duplicates while preserving order
+                    if unique_events == ["first_open"]:
+                        return "During Onboarding"
+                    elif unique_events == ["first_open", "step1_homescreen_launched"]:
+                        return "After Launching Home Screen"
+                    elif unique_events == ["first_open", "step1_homescreen_launched", "step2_content_edit_screen_open"]:
+                        return "After Entering Editing Mode"
+                    elif unique_events == ["first_open", "step1_homescreen_launched", "step2_content_edit_screen_open", "step3_content_saved"]:
+                        return "After Content Save"
+                    else:
+                        return "Other"
+
+            # Group by user and collect events in sequence
+            event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
+            event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
+            event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
+            event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
+
+
+                # Apply the labeling function
+            event_flow_df['event_label'] = event_flow_df['event_sequence'].apply(label_event_flow)
+            #st.write("Event Flow for 'app_remove' Users with Matched Events and Labels:")
+            #st.dataframe(event_flow_df)
+
+
+            matched_events_df = app_remove_df[app_remove_df['event_name'].isin(matched_events_list)]
+            matched_events_df = matched_events_df.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
+            st.write("Event Flow for 'app_remove' Users with Matched Events and Categories:")
+            st.dataframe(matched_events_df)
+
+            last_5_records_df1 = last_5_records_df1.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
+            #st.write("Last 5 Valid Records for Users with 'app_remove' Event (excluding 'app_remove') with Event Labels:")
+            #st.dataframe(last_5_records_df1)
+
+            users_with_paid_ad = last_5_records_df1.groupby('user_pseudo_id').filter(lambda x: 'paid_ad_impression' in x['event_name'].values)
+
+            # Create the pivot table grouped by 'event_label'
+            users_with_paid_ad = last_5_records_df1.groupby('user_pseudo_id').filter(lambda x: 'paid_ad_impression' in x['event_name'].values)
+
+            # Create pivot tables
+            pivot_table_paid_ad = users_with_paid_ad.groupby('event_label')['user_pseudo_id'].nunique().reset_index(name='Total users_paid_ad')
+            pivot_table_paid_ad = pivot_table_paid_ad.sort_values(by='Total users_paid_ad', ascending=False)
+
+            pivot_table_flow = matched_events_df.groupby('event_label').nunique()['user_pseudo_id'].reset_index(name='Total users_flow')
+            pivot_table_flow = pivot_table_flow.sort_values(by='Total users_flow', ascending=False)
+            pivot_table_flow['Percentage_flow'] = (pivot_table_flow['Total users_flow'] / pivot_table_flow['Total users_flow'].sum()) * 100
+
+            # Merge the two pivot tables
+            pivot_table_combined = pd.merge(pivot_table_flow, pivot_table_paid_ad, on='event_label', how='left')
+
+            # Calculate Percentage_paid_ad
+            pivot_table_combined['Percentage_paid_ad'] = (pivot_table_combined['Total users_paid_ad'] / pivot_table_combined['Total users_flow']) * 100
+
+            # Display in Streamlit
+            #col1, col2 = st.columns(2)
+
+            #with col1:
+                #st.write("Pivot Table of app removed users last 5 record in paid ad impression:")
+                #st.write(pivot_table_paid_ad.style.format({'Total users_paid_ad': "{:.0f}"}))
+
+            #with col2:
+                #st.write("Pivot Table of app removed users flow:")
+                #st.write(pivot_table_flow.style.format({'Percentage_flow': "{:.2f}%"}))
+
+            # Display the combined pivot table
+            st.write("Pivot Table of App Removed Users:")
+            st.write(pivot_table_combined[['event_label', 'Total users_flow', 'Percentage_flow', 'Total users_paid_ad', 'Percentage_paid_ad']].style.format({'Percentage_flow': "{:.2f}%", 'Percentage_paid_ad': "{:.2f}%"}))
+
+            matched_events_df = non_app_remove_df[non_app_remove_df['event_name'].isin(matched_events_list)]
 
 
             # Define the labels based on event sequences
-        def label_event_flow(events):
-                unique_events = list(dict.fromkeys(events))  # Remove duplicates while preserving order
-                if unique_events == ["first_open"]:
-                    return "During Onboarding"
-                elif unique_events == ["first_open", "step1_homescreen_launched"]:
-                    return "After Launching Home Screen"
-                elif unique_events == ["first_open", "step1_homescreen_launched", "step2_content_edit_screen_open"]:
-                    return "After Entering Editing Mode"
-                elif unique_events == ["first_open", "step1_homescreen_launched", "step2_content_edit_screen_open", "step3_content_saved"]:
-                    return "After Content Save"
-                else:
-                    return "Other"
-
-        # Group by user and collect events in sequence
-        event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
-        event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
-        event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
-        event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
-
-
-            # Apply the labeling function
-        event_flow_df['event_label'] = event_flow_df['event_sequence'].apply(label_event_flow)
-        st.write("Event Flow for 'app_remove' Users with Matched Events and Labels:")
-        st.dataframe(event_flow_df)
-
-
-        matched_events_df = app_remove_df[app_remove_df['event_name'].isin(matched_events_list)]
-        matched_events_df = matched_events_df.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
-        st.write("Event Flow for 'app_remove' Users with Matched Events and Categories:")
-        st.dataframe(matched_events_df)
-
-        last_5_records_df1 = last_5_records_df1.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
-        #st.write("Last 5 Valid Records for Users with 'app_remove' Event (excluding 'app_remove') with Event Labels:")
-        #st.dataframe(last_5_records_df1)
-
-        users_with_paid_ad = last_5_records_df1.groupby('user_pseudo_id').filter(lambda x: 'paid_ad_impression' in x['event_name'].values)
-
-        # Create the pivot table grouped by 'event_label'
-        pivot_table = users_with_paid_ad.groupby('event_label')['user_pseudo_id'].nunique().reset_index(name='Total users')
-
-        # Sort the pivot table by the 'Total users' column in descending order
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-
-        # Calculate the percentage of each event label
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col1:
-        # Display the pivot table in Streamlit
-            st.write("Pivot Table of app removed users last 5 record in paid ad impression:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
-
-
-
-        pivot_table = matched_events_df.groupby('event_label').nunique()['user_pseudo_id'].reset_index(name='Total users')
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col2:
-            st.write("Pivot Table of app removed users flow:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
-
-        matched_events_df = non_app_remove_df[non_app_remove_df['event_name'].isin(matched_events_list)]
-
-
-        # Define the labels based on event sequences
-        def label_event_flow(events):
+            def label_event_flow(events):
                 unique_events = list(dict.fromkeys(events))  # Remove duplicates while preserving order
                 if unique_events == ["first_open"]:
                     return "During Onboarding"
@@ -1087,49 +1100,206 @@ def main():
                     return "Other"
 
             # Group by user and collect events in sequence
-        event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
-        event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
-        event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
-        event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
-
+            event_flow_df = matched_events_df.groupby('user_pseudo_id').apply(lambda x: x['event_name'].tolist()).reset_index()
+            event_flow_df.columns = ['user_pseudo_id', 'event_sequence']
 
             # Apply the labeling function
-        event_flow_df['event_label'] = event_flow_df['event_sequence'].apply(label_event_flow)
-        st.write("Event Flow for 'churn' Users with Matched Events and Labels:")
-        st.dataframe(event_flow_df)
+            event_flow_df['event_label'] = event_flow_df['event_sequence'].apply(label_event_flow)
+            #st.write("Event Flow for 'churn' Users with Matched Events and Labels:")
+            #st.dataframe(event_flow_df)
+
+            # Filter and merge dataframes
+            matched_events_df = non_app_remove_df[non_app_remove_df['event_name'].isin(matched_events_list)]
+            matched_events_df = matched_events_df.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
+
+            last_5_records_df2 = last_5_records_df2.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
+            st.write("Last 5 Valid Records for Users without 'app_remove' Event:")
+            st.dataframe(last_5_records_df2)
+
+            users_with_paid_ad = last_5_records_df2.groupby('user_pseudo_id').filter(lambda x: 'paid_ad_impression' in x['event_name'].values)
+
+            # Create pivot table for event flow
+            pivot_table_flow = matched_events_df.groupby('event_label').nunique()['user_pseudo_id'].reset_index(name='Total users_flow')
+            pivot_table_flow = pivot_table_flow.sort_values(by='Total users_flow', ascending=False)
+            pivot_table_flow['Percentage_flow'] = (pivot_table_flow['Total users_flow'] / pivot_table_flow['Total users_flow'].sum()) * 100
+
+            pivot_table_paid_ad = users_with_paid_ad.groupby('event_label')['user_pseudo_id'].nunique().reset_index(name='Total users_paid_ad')
+            pivot_table_paid_ad = pivot_table_paid_ad.sort_values(by='Total users_paid_ad', ascending=False)
+            pivot_table_paid_ad['Percentage_paid_ad'] = (pivot_table_paid_ad['Total users_paid_ad'] / pivot_table_paid_ad['Total users_paid_ad'].sum()) * 100
+            pivot_table_combined = pd.merge(pivot_table_flow, pivot_table_paid_ad, on='event_label', how='left', suffixes=('_flow', '_paid_ad'))
+
+            # Calculate the Percentage_paid_ad relative to Total users_flow
+            pivot_table_combined['Percentage_paid_ad'] = (pivot_table_combined['Total users_paid_ad'] / pivot_table_combined['Total users_flow']) * 100
+
+            #col1, col2 = st.columns(2)
+            #with col1:
+                #st.write("Pivot Table of Churn Users Flow:")
+                #st.write(pivot_table_flow.style.format({'Total users_paid_ad': "{:.2f}%"}))
+            #with col2:
+                #st.write("Pivot Table of Churn Users Last 5 Records with Paid Ad Impression:")
+                #st.write(pivot_table_paid_ad.style.format({'Percentage_flow': "{:.2f}%"}))
+
+            # Display the combined pivot table
+            st.write("Pivot Table of Churn Users:")
+            st.write(pivot_table_combined[['event_label', 'Total users_flow', 'Percentage_flow', 'Total users_paid_ad', 'Percentage_paid_ad']].style.format({'Percentage_flow': "{:.2f}%", 'Percentage_paid_ad': "{:.2f}%"}))
+            col1, col2 = st.columns(2)
+            app_remove_percentages = []
+#new
+                # Get the app_remove users count
+            app_remove_df = final_df1[final_df1['user_pseudo_id'].isin(app_remove_users)]
+            app_remove_count = app_remove_df.shape[0]  # Total app_remove users
+            app_remove_percentage = (app_remove_count / final_df1.shape[0]) * 100  # Percentage of app_remove users
+
+                # Display the pivot table
+                #st.write("Pivot Table of Before homescreen launched user churn:")
+                #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                # Display the app_remove count and percentage
+            #st.write(f"App Remove Users: {app_remove_count} ({app_remove_percentage:.2f}%)")
+
+            app_remove_percentages.append(app_remove_percentage)
+            # ---- Pivot Table 2: Before content_edit_screen_open ----
+
+               # Get the app_remove users count
+            app_remove_df = final_df2[final_df2['user_pseudo_id'].isin(app_remove_users)]
+            app_remove_count = app_remove_df.shape[0]  # Total app_remove users
+            app_remove_percentage = (app_remove_count / final_df2.shape[0]) * 100  # Percentage of app_remove users
+
+                # Display the pivot table
+                #st.write("Pivot Table of Before content_edit_screen_open user churn:")
+                #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                # Display the app_remove count and percentage
+            #st.write(f"App Remove Users: {app_remove_count} ({app_remove_percentage:.2f}%)")
+
+            app_remove_percentages.append(app_remove_percentage)
+            # ---- Pivot Table 3: Before content_saved ----
+
+            app_remove_df = final_df3[final_df3['user_pseudo_id'].isin(app_remove_users)]
+            app_remove_count = app_remove_df.shape[0]  # Total app_remove users
+            app_remove_percentage = (app_remove_count / final_df3.shape[0]) * 100  # Percentage of app_remove users
+
+                # Display the pivot table
+                #st.write("Pivot Table of Before content_saved user churn:")
+                #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                # Display the app_remove count and percentage
+            #st.write(f"App Remove Users: {app_remove_count} ({app_remove_percentage:.2f}%)")
+
+            app_remove_percentages.append(app_remove_percentage)
+            # ---- Pivot Table 4: After content_saved ----
+                 # Get the app_remove users count
+            app_remove_df = final_df4[final_df4['user_pseudo_id'].isin(app_remove_users)]
+            app_remove_count = app_remove_df.shape[0]  # Total app_remove users
+            app_remove_percentage = (app_remove_count / final_df4.shape[0]) * 100  # Percentage of app_remove users
+
+                # Display the pivot table
+                #st.write("Pivot Table of After content_saved user churn:")
+                #st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+
+                # Display the app_remove count and percentage
+            #st.write(f"App Remove Users: {app_remove_count} ({app_remove_percentage:.2f}%)")
+
+            app_remove_percentages.append(app_remove_percentage)
+
+                # ---- Calculate Average Percentage of App Remove Users ----
+            average_percentage = sum(app_remove_percentages) / len(app_remove_percentages)
+
+                # ---- Display Average in Card Format ----
+            #st.markdown("### Average Percentage of App Remove Users")
+            with col1:
+                    # Using Streamlit's markdown and HTML for card style formatting
+               st.sidebar.markdown(f"""
+                    <div style="
+                        padding: 20px; 
+                        background-color: #f0f0f0; 
+                        border-radius: 10px; 
+                        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); 
+                        text-align: center;
+                        margin-bottom: 10px;
+                    ">
+                        <h3 style="margin: 0;">App Remove Rate</h3>
+                        <h2 style="margin: 0; color: #d9534f;">{average_percentage:.2f}%</h2>
+                    </div>
+                """, unsafe_allow_html=True)
 
 
-        matched_events_df = non_app_remove_df[non_app_remove_df['event_name'].isin(matched_events_list)]
-        matched_events_df = matched_events_df.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
-        #st.write("Event Flow for 'churn' Users with Matched Events and Categories:")
-        #st.dataframe(matched_events_df)
+            churn_percentages = []
 
-        last_5_records_df2 = last_5_records_df2.merge(event_flow_df[['user_pseudo_id', 'event_label']], on='user_pseudo_id', how='left')
-        st.write("Last 5 Valid Records for Users without 'app_remove' Event")
-        st.dataframe(last_5_records_df2)
+            # ---- Pivot Table 1: Before homescreen launched ----
 
-        pivot_table = matched_events_df.groupby('event_label').nunique()['user_pseudo_id'].reset_index(name='Total users')
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col2:
-            st.write("Pivot Table of Churn users flow:")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+            # Get the app_remove users count
+            non_app_remove_df = final_df1[final_df1['user_pseudo_id'].isin(non_app_remove_users)]
+            churn_count = non_app_remove_df.shape[0]  # Total app_remove users
+            churn_percentage = (churn_count / final_df1.shape[0]) * 100  # Percentage of app_remove users
 
-        users_with_paid_ad = last_5_records_df2.groupby('user_pseudo_id').filter(lambda x: 'paid_ad_impression' in x['event_name'].values)
+            # Display the app_remove count and percentage
+            #st.write(f"Churn Users (Before homescreen launched): {churn_count} ({churn_percentage:.2f}%)")
 
-        # Create the pivot table grouped by 'event_label'
-        pivot_table = users_with_paid_ad.groupby('event_label')['user_pseudo_id'].nunique().reset_index(name='Total users')
+            churn_percentages.append(churn_percentage)
 
-        # Sort the pivot table by the 'Total users' column in descending order
-        pivot_table = pivot_table.sort_values(by='Total users', ascending=False)
+            # ---- Pivot Table 2: Before content_edit_screen_open ----
 
-        # Calculate the percentage of each event label
-        pivot_table['Percentage'] = (pivot_table['Total users'] / pivot_table['Total users'].sum()) * 100
-        with col2:
-        # Display the pivot table in Streamlit
-            st.write("Pivot Table of Churn users last 5 record in paid ad impression :")
-            st.write(pivot_table.style.format({'Percentage': "{:.2f}%"}))
+            # Get the app_remove users count
+            non_app_remove_df = final_df2[final_df2['user_pseudo_id'].isin(non_app_remove_users)]
+            churn_count = non_app_remove_df.shape[0]  # Total app_remove users
+            churn_percentage = (churn_count / final_df2.shape[0]) * 100  # Percentage of app_remove users
+
+            # Display the app_remove count and percentage
+            #st.write(f"Churn Users (Before content_edit_screen_open): {churn_count} ({churn_percentage:.2f}%)")
+
+            churn_percentages.append(churn_percentage)
+
+            # ---- Pivot Table 3: Before content_saved ----
+
+            # Get the app_remove users count
+            non_app_remove_df = final_df3[final_df3['user_pseudo_id'].isin(non_app_remove_users)]
+            churn_count = non_app_remove_df.shape[0]  # Total app_remove users
+            churn_percentage = (churn_count / final_df3.shape[0]) * 100  # Percentage of app_remove users
+
+            # Display the app_remove count and percentage
+            #st.write(f"Churn Users (Before content_saved): {churn_count} ({churn_percentage:.2f}%)")
+
+            churn_percentages.append(churn_percentage)
+
+            # ---- Pivot Table 4: After content_saved ----
+
+            # Get the app_remove users count
+            non_app_remove_df = final_df4[final_df4['user_pseudo_id'].isin(non_app_remove_users)]
+            churn_count = non_app_remove_df.shape[0]  # Total app_remove users
+            churn_percentage = (churn_count / final_df4.shape[0]) * 100  # Percentage of app_remove users
+
+            # Display the app_remove count and percentage
+            #st.write(f"Churn Users (After content_saved): {churn_count} ({churn_percentage:.2f}%)")
+
+            churn_percentages.append(churn_percentage)
+
+            # ---- Calculate Average Percentage of App Remove Users ----
+            average_percentage = sum(churn_percentages) / len(churn_percentages) if churn_percentages else 0
+            with col2:
+                # ---- Display Average in Card Format ----
+                st.sidebar.markdown(f"""
+                    <div style="
+                        padding: 20px; 
+                        background-color: #f0f0f0; 
+                        border-radius: 10px; 
+                        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); 
+                        text-align: center;
+                        margin-bottom: 10px;
+                    ">
+                        <h3 style="margin: 0;">Churn Rate</h3>
+                        <h2 style="margin: 0; color: #d9534f;">{average_percentage:.2f}%</h2>
+                    </div>
+                """, unsafe_allow_html=True)
+
+
+
+
 
 
 if __name__ == "__main__":
     main()
+
+
+
+
